@@ -9,7 +9,7 @@ import cv_interface
 
 app = FastAPI(title="Lenta Tech Price Tag Recognition Backend")
 
-# Разрешаем CORS для фронта
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,11 +35,9 @@ def process_video_task(task_id: str, video_path: str):
     """Фоновая обработка видео вызовом CV-модели."""
     try:
         csv_path = cv_interface.process_video(video_path)
-        # Сохраняем путь к CSV в глобальном словаре или БД (здесь для простоты в файл)
         with open(os.path.join(TEMP_VIDEO_DIR, f"{task_id}_result.txt"), "w") as f:
             f.write(csv_path)
     except Exception as e:
-        # Логируем ошибку
         with open(os.path.join(TEMP_VIDEO_DIR, f"{task_id}_error.txt"), "w") as f:
             f.write(str(e))
     finally:
@@ -48,9 +46,7 @@ def process_video_task(task_id: str, video_path: str):
 
 @app.get("/result/{task_id}")
 async def get_result(task_id: str):
-    """
-    Проверяет статус задачи и возвращает CSV, если готов.
-    """
+    """Проверяет статус задачи и возвращает CSV, если готов."""
     result_file = os.path.join(TEMP_VIDEO_DIR, f"{task_id}_result.txt")
     error_file = os.path.join(TEMP_VIDEO_DIR, f"{task_id}_error.txt")
     

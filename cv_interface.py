@@ -1,17 +1,14 @@
 import os
 import tempfile
-import pandas as pd
+import csv
 
 def process_video(video_path: str) -> str:
     """
-    Вызывает CV-модель (реализует Саня).
-    Принимает путь к видеофайлу.
-    Возвращает путь к сгенерированному CSV-файлу.
+    Заглушка CV-модели. Создаёт CSV с правильными полями и одной тестовой строкой.
     """
-    # Это ЗАГЛУШКА. Саня заменит на реальный вызов своей модели.
     print(f"[CV] Обработка видео: {video_path}")
-    
-    # Имитируем работу: создаём пустой CSV с нужными колонками
+
+    # Поля, как в задании (31 колонка)
     columns = [
         'filename', 'product_name', 'price_default', 'price_card', 'price_discount',
         'barcode', 'discount_amount', 'id_sku', 'print_datetime', 'code',
@@ -21,10 +18,15 @@ def process_video(video_path: str) -> str:
         'wholesale_level_1_price', 'wholesale_level_2_count', 'wholesale_level_2_price',
         'action_price_qr', 'action_code_qr'
     ]
-    df = pd.DataFrame(columns=columns)
-    # Добавим одну тестовую строку, чтобы показать, что CSV создаётся
-    df.loc[0] = [os.path.basename(video_path)] + [''] * (len(columns)-1)
-    
-    temp_csv = tempfile.NamedTemporaryFile(delete=False, suffix='.csv')
-    df.to_csv(temp_csv.name, index=False, encoding='utf-8-sig')
+
+    # Создаём временный CSV файл
+    temp_csv = tempfile.NamedTemporaryFile(delete=False, suffix='.csv', mode='w', newline='', encoding='utf-8-sig')
+    writer = csv.writer(temp_csv)
+    writer.writerow(columns)
+
+    # Добавляем одну тестовую строку (пустую, только имя видео)
+    row = [os.path.basename(video_path)] + [''] * (len(columns) - 1)
+    writer.writerow(row)
+    temp_csv.close()
+
     return temp_csv.name
