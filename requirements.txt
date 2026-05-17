@@ -1,10 +1,6 @@
+setuptools==80.9.0
 fastapi==0.104.1
 uvicorn==0.24.0
 python-multipart==0.0.6
 pandas==2.0.3
 numpy==1.24.3
-# Ниже зависимости для CV-модели (Саша добавит нужные):
-# opencv-python
-# paddleocr
-# pyzbar
-# scikit-learn
