@@ -1,27 +1,43 @@
 import os
 import shutil
 import tempfile
+import csv
+import uuid
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import uuid
 import cv_interface
-import pandas as pd   # добавим, чтобы читать статистику из CSV
 
 app = FastAPI(title="Lenta Tech Price Tag Recognition Backend")
 
+# CORS: разрешаем всем (без credentials)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 TEMP_VIDEO_DIR = tempfile.gettempdir()
+tasks = {}
 
-# Хранилище информации о задачах (в памяти, для демо)
-tasks = {}  # task_id -> {"csv_path": ..., "status": ..., "progress": ..., "stage": ...}
+def get_csv_info(csv_path: str):
+    """Читает CSV и возвращает stats и preview-строки (без pandas)."""
+    with open(csv_path, 'r', encoding='utf-8-sig') as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    total = len(rows)
+    barcode_count = sum(1 for r in rows if r.get('barcode', '').strip())
+    qr_count = sum(1 for r in rows if r.get('qr_code_barcode', '').strip())
+    stats = {
+        'detected_count': total,
+        'rows_count': total,
+        'barcode_count': barcode_count,
+        'qr_count': qr_count
+    }
+    preview = rows[:5]
+    return stats, preview
 
 @app.post("/upload")
 async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -29,15 +45,12 @@ async def upload_video(background_tasks: BackgroundTasks, file: UploadFile = Fil
     video_path = os.path.join(TEMP_VIDEO_DIR, f"{task_id}_{file.filename}")
     with open(video_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    
-    # Инициализируем задачу
     tasks[task_id] = {
         "status": "queued",
         "progress": 0,
         "stage": "Видео загружено, ожидает обработки",
         "csv_path": None
     }
-    
     background_tasks.add_task(process_video_task, task_id, video_path)
     return {"task_id": task_id, "status": "queued"}
 
@@ -46,26 +59,14 @@ def process_video_task(task_id: str, video_path: str):
         tasks[task_id]["status"] = "processing"
         tasks[task_id]["progress"] = 30
         tasks[task_id]["stage"] = "Распознавание ценников..."
-        
         csv_path = cv_interface.process_video(video_path)
-        
         tasks[task_id]["csv_path"] = csv_path
         tasks[task_id]["status"] = "done"
         tasks[task_id]["progress"] = 100
         tasks[task_id]["stage"] = "Готово"
-        
-        # Прочитаем статистику из CSV (первые строки и количество)
-        df = pd.read_csv(csv_path)
-        stats = {
-            "detected_count": len(df),
-            "rows_count": len(df),
-            "barcode_count": df['barcode'].astype(str).str.len().gt(0).sum(),
-            "qr_count": df['qr_code_barcode'].astype(str).str.len().gt(0).sum()
-        }
+        stats, preview = get_csv_info(csv_path)
         tasks[task_id]["stats"] = stats
-        # Сохраним preview (первые 5 строк)
-        tasks[task_id]["rows_preview"] = df.head(5).to_dict(orient="records")
-        
+        tasks[task_id]["rows_preview"] = preview
     except Exception as e:
         tasks[task_id]["status"] = "error"
         tasks[task_id]["stage"] = f"Ошибка: {str(e)}"
@@ -78,7 +79,6 @@ def process_video_task(task_id: str, video_path: str):
 async def get_result(task_id: str):
     if task_id not in tasks:
         raise HTTPException(status_code=404, detail="Task not found")
-    
     info = tasks[task_id]
     response = {
         "task_id": task_id,
@@ -86,14 +86,12 @@ async def get_result(task_id: str):
         "progress": info.get("progress", 0),
         "stage": info.get("stage", "")
     }
-    
     if info["status"] == "done":
         response["csv_url"] = f"/result/{task_id}/csv"
         response["stats"] = info.get("stats", {})
         response["rows_preview"] = info.get("rows_preview", [])
     elif info["status"] == "error":
         response["error"] = info.get("stage", "Unknown error")
-    
     return JSONResponse(content=response)
 
 @app.get("/result/{task_id}/csv")
